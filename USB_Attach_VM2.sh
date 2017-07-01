@@ -1,4 +1,6 @@
 #!/bin/bash
+USER=jenkins
+
 Host_IP="$(ifconfig | grep -A 1 'xenbr0' | tail -1 | cut -d ':' -f 2 | cut -d ' ' -f 1)"
 echo "$(date)" >> /tmp/USB_Auto_Attach_Logs
 echo "USB_Attach_VM2" >> /tmp/USB_Auto_Attach_Logs
@@ -23,7 +25,7 @@ echo "VMToSet = $VMToSet"
 echo "MacAddress = $MacAddress"
 echo "IPToSet = $IPToSet"
 
-#ssh -o StrictHostKeyChecking=no -l jenkins@$IPToSet
+ssh -o StrictHostKeyChecking=no -l $USER@$IPToSet
 
 #for (( i=2; i <= NumIDs; i++))
 #do
