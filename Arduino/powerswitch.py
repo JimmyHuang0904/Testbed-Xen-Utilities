@@ -19,10 +19,18 @@ def bootswitch():
     serialref.write('x02\n')
     return
 
+def powercycle():
+    serialref.write('x01\n')
+    time.sleep(1)
+    serialref.write('x00\n')
+    return
+
 if __name__ == "__main__":
     hexwrite = raw_input('Enter hex value (eg. x0E) or boot:  ')
     if hexwrite == 'boot':
         bootswitch()
+    elif hexwrite == 'cycle':
+        powercycle()
     else:
         serialref.write(hexwrite+'\n')
     serialref.close()
