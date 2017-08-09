@@ -1,0 +1,1 @@
+ACTION=="add", ATTRS{idVendor}=="1199", ATTRS{idProduct}=="****", RUN+="/home/xentest/Documents/USB_Auto_Attach/USB_Manager.sh"
