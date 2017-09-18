@@ -38,27 +38,27 @@ class Target(RelayControl):
     # def is_polarity_inverted(self, asdf):
         # return self.polarty_inverted
 
-    def open_port(self, json_data):
-        for file in os.listdir("/sys/bus/usb/devices" + json_data["bus"][self.target_id - 1]["num"]):
+    def open_port(self):
+        for file in os.listdir("/sys/bus/usb/devices" + self.json_data["bus"][self.target_id - 1]["num"]):
             if file.startswith("ttyUSB"):
                 port = "/dev/" + file
                 self.serialref = serial.Serial(port, baudrate)
 
-    def dev_num_check(self, json_data):
+    def dev_num_check(self):
         ''' Change directory to where devnum textfile is and save it to self.devnum'''
-        os.chdir("/sys/bus/usb/devices" + json_data["bus"][self.target_id - 1]["num"])
+        os.chdir("/sys/bus/usb/devices" + self.json_data["bus"][self.target_id - 1]["num"])
         os.chdir("..")
         devnumfile = open('devnum', 'r')
         devnum = int( devnumfile.read() )
 
-        if devnum != json_data["bus"][self.target_id - 1]["devnum"]:
+        if devnum != self.json_data["bus"][self.target_id - 1]["devnum"]:
             # Running initializing sequence
             print("Initializing device")
             self.initialize_relay(self.serialref)
 
             # Overwriting new devnum to JSON file
-            json_data["bus"][self.target_id - 1]["devnum"] = devnum
-            self.write_to_json(json_data)
+            self.json_data["bus"][self.target_id - 1]["devnum"] = devnum
+            self.write_to_json(self.json_data)
         devnumfile.close()
 
 # main
@@ -77,11 +77,11 @@ var = Target(pathToJson)
 
 var.set_target_id(target_id)
 
-var.open_port(var.json_data)
+var.open_port()
 
 # var.is_polarity_inverted(var.serialref)
 
-var.dev_num_check(var.json_data)
+var.dev_num_check()
 
 if fn == "off":
     var.power_off(var.serialref)
