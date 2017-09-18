@@ -10,14 +10,15 @@ baudrate = 9600
 
 class RelayControl:
 
-    def initialize_relay(self, serialref):
-        serialref.write('\x50')
+    def initialize_relay(self):
+        self.serialref.write('\x50')
         time.sleep(0.5)
-        serialref.write('\x51')
+        self.serialref.write('\x51')
         time.sleep(0.5)
 
-    def power_off(self, serialref):
-        serialref.write('0x08')
+    def power_off(self):
+        self.serialref.write('0x08')
+
 class Target(RelayControl):
 
     def __init__(self, path):
@@ -54,7 +55,7 @@ class Target(RelayControl):
         if devnum != self.json_data["bus"][self.target_id - 1]["devnum"]:
             # Running initializing sequence
             print("Initializing device")
-            self.initialize_relay(self.serialref)
+            self.initialize_relay()
 
             # Overwriting new devnum to JSON file
             self.json_data["bus"][self.target_id - 1]["devnum"] = devnum
@@ -84,7 +85,8 @@ var.open_port()
 var.dev_num_check()
 
 if fn == "off":
-    var.power_off(var.serialref)
+    var.power_off()
+
 
     # # hexwrite = sys.argv[1]
     # # print(hexwrite)
