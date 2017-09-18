@@ -10,6 +10,10 @@ baudrate = 9600
 
 class RelayControl:
 
+    power_bit  = 0x01
+    reboot_bit = 0x02
+    sim_bit    = 0x04
+
     def initialize_relay(self):
         self.serialref.write('\x50')
         time.sleep(0.5)
@@ -17,17 +21,53 @@ class RelayControl:
         time.sleep(0.5)
 
     def reboot(self):
-        self.next_state = str(0x02)
+        time.sleep(0.5)
+        self.next_state = chr(self.power_bit | self.reboot_bit)
+        self.serialref.write(self.next_state)
+
+        time.sleep(0.5)
+        self.next_state = chr(self.reboot_bit)
+        self.serialref.write(self.next_state)
+
+    def power_on(self):
+        time.sleep(0.5)
+        self.next_state = chr(not self.power_bit)
         self.serialref.write(self.next_state)
 
     def power_off(self):
-        power_bit = 0x01
+        time.sleep(0.5)
         if not self.current_state:
-            self.next_state = chr(power_bit)
-            self.serialref.write(self.next_state)
+            self.next_state = chr(self.power_bit)
         else:
-            self.next_state = chr(power_bit & int(self.current_state, 16))
-            self.serialref.write(self.next_state)
+            self.next_state = chr(self.power_bit)
+
+        self.serialref.write(self.next_state)
+
+    def switch_power(self):
+        time.sleep(0.5)
+        if not self.current_state:
+            self.next_state = chr(self.power_bit)
+        else:
+            if int(self.current_state, 16) & self.power_bit:
+                self.next_state = chr(~self.power_bit & int(self.current_state, 16))
+            else:
+                self.next_state = chr( self.power_bit | int(self.current_state, 16))
+
+        self.serialref.write(self.next_state)
+
+    def switch_sim(self):
+        time.sleep(0.5)
+        if not self.current_state:
+            print("no state")
+            self.next_state = chr(self.sim_bit)
+        else:
+            if int(self.current_state, 16) & self.sim_bit:
+                self.next_state = chr(~self.sim_bit & int(self.current_state, 16))
+            else:
+                self.next_state = chr( self.sim_bit | int(self.current_state, 16))
+
+        self.serialref.write(self.next_state)
+
 
 class Target(RelayControl):
 
@@ -107,12 +147,20 @@ var.dev_num_check()
 if fn == "reboot":
     var.reboot()
 
-if fn == "off":
+elif fn == "off":
     var.power_off()
+
+elif fn == "on":
+    var.power_on()
+
+elif fn == "sim":
+    var.switch_sim()
+
+elif fn == "power":
+    var.switch_power()
 
 
 var.set_state()
-
 
 
     # # hexwrite = sys.argv[1]
