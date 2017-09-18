@@ -16,8 +16,18 @@ class RelayControl:
         self.serialref.write('\x51')
         time.sleep(0.5)
 
+    def reboot(self):
+        self.next_state = str(0x02)
+        self.serialref.write(self.next_state)
+
     def power_off(self):
-        self.serialref.write('0x08')
+        power_bit = 0x01
+        if not self.current_state:
+            self.next_state = chr(power_bit)
+            self.serialref.write(self.next_state)
+        else:
+            self.next_state = chr(power_bit & int(self.current_state, 16))
+            self.serialref.write(self.next_state)
 
 class Target(RelayControl):
 
@@ -36,7 +46,7 @@ class Target(RelayControl):
     def set_polarity_inverted(self, state):
         self.polarity_inverted = state
 
-    # def is_polarity_inverted(self, asdf):
+    # def is_polarity_inverted(self, polarity_bit):
         # return self.polarty_inverted
 
     def open_port(self):
@@ -62,6 +72,13 @@ class Target(RelayControl):
             self.write_to_json(self.json_data)
         devnumfile.close()
 
+    def get_current_state(self):
+        self.current_state = self.json_data["state"]
+
+    def set_state(self):
+        self.json_data["state"] = hex(ord(self.next_state))
+        self.write_to_json(self.json_data)
+
 # main
 if len(sys.argv) < 3:
     sys.stderr.write('Usage: <target> <fn> <?boot_inverted 1 or 0>\n')
@@ -80,12 +97,22 @@ var.set_target_id(target_id)
 
 var.open_port()
 
+var.get_current_state()
+
+print(var.current_state)
 # var.is_polarity_inverted(var.serialref)
 
 var.dev_num_check()
 
+if fn == "reboot":
+    var.reboot()
+
 if fn == "off":
     var.power_off()
+
+
+var.set_state()
+
 
 
     # # hexwrite = sys.argv[1]
