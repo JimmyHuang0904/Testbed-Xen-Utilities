@@ -5,6 +5,29 @@ import time
 import socket
 import os
 
+def init_raspi():
+    import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+
+def get_position(name, port):
+  for gpio in port:
+    if gpio["name"] == name:
+      return gpio["position"]
+
+  return -1
+
+def get_json_index(target_type, power_switch_num):
+  index = 0
+  for target_num in json_ref["controller"]:
+
+    if target_num["type"] == target_type and \
+       target_num["power_switch"] == power_switch_num:
+      return index
+    index += 1
+
+  raise Exception("Index of target_id in JSON file cannot be found")
+
 def write_to_json(data, path):
   import json
   from pprint import pprint
@@ -16,7 +39,62 @@ def read_json(path):
   with open(path) as data_file:
     return json.load(data_file)
 
+def get_target(target_id):
+  if not int(target_id) in targets:
+    targets[int(target_id)] = Controller(target_id)
+  return targets[int(target_id)]
+
+class Controller:
+
+  def __init__(self, target_id):
+    self.target_id = target_id
+    self.power_switch_num = {}
+
+  def set_target(self, port, portinfo, target_type, power_switch_num):
+    if portinfo["name"] == "power":
+      self.power = int(port)
+    elif portinfo["name"] == "boot":
+      self.boot = int(port)
+    elif portinfo["name"] == "sim":
+      self.sim = int(port)
+
+    self.power_switch_num[portinfo["name"]] = (power_switch_num, target_type)
+
+  # def declare(self):
+  #   print "power:%d, boot:%d, sim:%d" %(self.power, self.boot, self.sim)
+  #   print(self.power_switch_num)
+
+  def set_boot_inverted(self, state):
+    print "Target#%d: Gpio Boot %s" % (self.id, "Inverted" if state else "Normal")
+    self.boot_inverted = state
+
+  def switch_power(self, state):
+    self.create_target(self.power_switch_num["power"])
+    targets[target_id].output(self.power, state)
+
+  def switch_boot(self, state):
+    self.create_target(self.power_switch_num["boot"])
+    targets[target_id].output(self.boot, state)
+
+  def switch_sim(self, state):
+    self.create_target(self.power_switch_num["sim"])
+    targets[target_id].output(self.sim, state)
+
+  def create_target(self, power_switch_num):
+    if(power_switch_num[1] == 'usb_relay'):
+      targets[target_id] = UsbRelayTarget(power_switch_num[0])
+    # elif(power_switch_num[1] == 'raspberrypi'):
+      # targets[target_id] = GpioTarget(power_switch_num[0])
+    # elif(power_switch_num[1] == 'frilm-ed-pwrs01')
+      # targets[target_id] = GpioTarget(power_switch_num[0])
+    # elif(power_switch_num[1] == 'carmd-ed-lxlegato03')
+      # targets[target_id] = MraaaTarget(power_switch_num[0])
+
 class Target:
+  def __check_gpio(self, gpio):
+      if gpio < 0:
+        raise Exception("Target#%d: Invalid GPIO %d" % (self.id, gpio))
+
   def set_boot_inverted(self, state):
     print "Target#%d: Gpio Boot %s" % (self.id, "Inverted" if state else "Normal")
     self.boot_inverted = state
@@ -55,29 +133,24 @@ class Target:
 
 class UsbRelayTarget(Target):
 
-  path_to_json =  os.getenv('POWER_SWITCH_JSON','/tmp/power_switch.json')
+  path_to_json =  os.getenv('POWER_SWITCH_JSON','/home/jimmy/pythonWorkspace/power_switch.json')
   baudrate = 9600
 
-  def __init__(self, id, power, boot, sim=-1):
+  def __init__(self, id):
 
-    import json
     import serial
-
     self.id = id
-    self.power = power
-    self.boot = boot
-    self.sim = sim
 
+  def setup_env(self):
     self.json_data = read_json(self.path_to_json)
 
-    self.device = self.json_data["target"][self.id - 1]
-
+    index = get_json_index("usb_relay", self.id)
+    self.device = self.json_data["controller"][index]
     self.open_port()
-
     self.current_state = self.device["overall_state"]
+    self.check_devnum()
 
-    self.get_position()
-
+  def check_devnum(self):
     os.chdir("/sys/bus/usb/devices" + self.device["busnum"])
     os.chdir("..")
     with open('devnum', 'r') as devnumfile:
@@ -91,25 +164,12 @@ class UsbRelayTarget(Target):
         write_to_json(self.json_data, self.path_to_json)
       devnumfile.close()
 
-  def get_position(self):
-
-    for functions in self.device["gpio"]:
-      if functions["name"] == 'power':
-        self.power = functions["position"]
-      elif functions["name"] == 'boot':
-        self.boot = functions["position"]
-      elif functions["name"] == 'sim':
-        self.sim = functions["position"]
-      else:
-        raise Exception("GPIO missing keyword \"name\" in JSON file")
-
   def open_port(self):
     import serial
 
     for file in os.listdir("/sys/bus/usb/devices" + self.device["busnum"]):
       if file.startswith("ttyUSB"):
         port = "/dev/" + file
-        print(port)
 
         self.serial_ref = serial.Serial(port, self.baudrate)
 
@@ -120,14 +180,12 @@ class UsbRelayTarget(Target):
     self.serial_ref.write('\x51')
     time.sleep(1)
 
-    self.next_state = chr(0x00)
+    self.next_state = 0x00
     self.set_state()
 
-  def input(self, gpio):
-    state = self.device["gpio"][gpio]["state"]
-    return state
-
   def output(self, gpio, state):
+    self.setup_env()
+
     time.sleep(1)
 
     bit = 1 << gpio
@@ -136,31 +194,43 @@ class UsbRelayTarget(Target):
 
     if not self.current_state:
       if state:
-        self.next_state = chr(bit)
+        self.next_state = bit
       else:
-        self.next_state = chr(0x00)
+        self.next_state = 0x00
     elif state:
-      self.next_state = chr( bit | int(self.current_state, 16))
+      self.next_state =  bit | int(self.current_state, 16)
     else:
-      self.next_state = chr(~bit & int(self.current_state, 16))
+      self.next_state = ~bit & int(self.current_state, 16)
 
-    self.serial_ref.write(self.next_state)
-    self.set_state()
+    self.serial_ref.write(chr(self.next_state))
 
-  def set_state(self):
-    self.device["overall_state"] = hex(ord(self.next_state))
+    self.set_state(gpio)
+
+  def set_state(self, gpio):
+    self.device["overall_state"] = hex(ord(chr(self.next_state)))
+
+    for ports in self.device["gpio"]:
+      if self.next_state & 1 << gpio:
+        ports[str(gpio)][0]["state"] = 1
+      else:
+        ports[str(gpio)][0]["state"] = 0
+
     write_to_json(self.json_data, self.path_to_json)
 
 targets = {}
 
-hostname = os.getenv("POWER_CONFIG", socket.gethostname())
+config = os.getenv("POWER_CONFIG", socket.gethostname())
 
-print "hostname: %s" % (hostname)
+path_to_json =  os.getenv('POWER_SWITCH_JSON','/home/jimmy/pythonWorkspace/power_switch.json')
 
-if hostname == "usb_relay":
-  targets[1] = UsbRelayTarget(1, 0, 1, 2)
-else:
-  raise Exception("Hostname has no permission")
+json_ref = read_json(path_to_json)
+
+for controller_array in json_ref["controller"]:
+  for gpio in controller_array["gpio"]:
+    for ports in gpio:
+      for port_info in gpio[ports]:
+        target = get_target(port_info["target_id"])
+        target.set_target(ports, port_info, controller_array["type"], controller_array["power_switch"])
 
 if len(sys.argv) < 3:
   sys.stderr.write('Usage: <target> <fn> <?boot_inverted 1 or 0>\n')
@@ -173,12 +243,10 @@ boot_inverted = True
 if len(sys.argv) >= 4:
   boot_inverted = (sys.argv[3] == "1")
 
-if not target_id in targets:
-  sys.stderr.write('Target %d unknown\n' % target_id)
-  sys.exit(1)
+target = get_target(target_id)
 
-target = targets[target_id]
-target.set_boot_inverted(boot_inverted)
+print(boot_inverted)
+# target.set_boot_inverted(boot_inverted)
 
 if fn == "reboot":
   target.switch_boot(True)
